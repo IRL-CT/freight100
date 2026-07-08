@@ -232,6 +232,20 @@ area clear with an operator in line-of-sight.
 For a repeatable, bounded way to command motion (with a ready-to-run script and the results of
 the test drives performed on this unit), see **[OPERATING_TESTS.md](OPERATING_TESTS.md)**.
 
+### Web teleop
+
+[`web_teleop.py`](web_teleop.py) serves a self-contained browser joystick (touch + WASD) that
+drives the base through the movement mux — no rosbridge required.
+
+```bash
+source /opt/ros/noetic/setup.bash
+python3 web_teleop.py          # then open http://<robot-ip>:8090
+```
+
+Safety is enforced server-side: hard speed caps (0.3 m/s / 0.6 rad/s), a 400 ms deadman
+watchdog (release, tab close, or Wi-Fi drop → immediate zero), and live runstop/battery/odom
+status. The hardware runstop always overrides.
+
 ---
 
 *Generated from live inspection of the running system.*
