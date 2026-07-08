@@ -112,6 +112,9 @@ sources and forwards a single velocity command to the base driver:
 > should be done only with the runstop released, a person in line-of-sight, the area clear,
 > and the robot off its charging dock.
 
+📄 **See [OPERATING_TESTS.md](OPERATING_TESTS.md)** for the safe, bounded, closed-loop motion
+test procedure actually used on this unit (reusable script + verified results).
+
 ---
 
 ## 5. Safety & Power
@@ -225,6 +228,9 @@ rostopic echo -n1 /battery_state    # check charge level / off-dock
 
 **Before driving:** release the hardware runstop, take the robot off its dock, and keep the
 area clear with an operator in line-of-sight.
+
+For a repeatable, bounded way to command motion (with a ready-to-run script and the results of
+the test drives performed on this unit), see **[OPERATING_TESTS.md](OPERATING_TESTS.md)**.
 
 ---
 
