@@ -165,5 +165,127 @@ demonstrating a healthy, accurate, repeatable drive path.
 
 ---
 
+## 6. Web Teleop — Running & Verifying (`web_teleop.py`)
+
+[`web_teleop.py`](web_teleop.py) serves a self-contained browser joystick (touch + WASD) that
+drives the base through the movement mux, exactly like the test script in §3.
+
+### Start it
+
+```bash
+cd ~/Desktop/freight100
+source /opt/ros/noetic/setup.bash      # ~/.bashrc already does this on this unit
+python3 web_teleop.py
+```
+
+Open **http://localhost:8090** on the robot itself, or **http://192.168.0.106:8090** from a
+device on the operator Wi-Fi (that is `wlan0`'s DHCP address — confirm with
+`ip -4 addr show wlan0` if it has changed). Only one instance can bind port 8090; an
+`OSError: [Errno 98] Address already in use` means one is already running
+(`ss -ltnp | grep 8090` shows its PID).
+
+### Check status before driving
+
+The four chips at the top of the page:
+
+| Chip | Healthy | Problem reading |
+|---|---|---|
+| `runstop` | **released** (green) | **ENGAGED** (red) — twist the red button out |
+| `ready` | **yes** (green) | **no** (red) — driver refuses motion (fault / breaker) |
+| `battery` | charge %, ⚡ while docked | `—` — no battery data |
+| `odom` | live x, y that change as the base moves | frozen values |
+
+**Any chip showing an amber "no data" means the base driver is publishing nothing — see §7.**
+The page and mux still look functional in that state, but nothing can move. (Before the
+2026-07-17 fix the page misleadingly rendered no-data as "runstop released / ready no".)
+
+The same status is available without the browser:
+
+```bash
+curl http://localhost:8090/status          # JSON; null fields = no driver data
+rostopic echo -n1 /robot_state             # runstopped / ready / faulted, from the driver
+rostopic echo -n1 /battery_state           # charge_level / is_charging
+```
+
+### Drive
+
+Same preconditions as §1: runstop released, **off the dock** (`is_charging: false`), area
+clear, operator in line-of-sight. Hold the pad or WASD/arrows — release to stop; Space or the
+■ STOP button is the panic stop. Server-side hard caps: 0.30 m/s / 0.60 rad/s; a 400 ms
+deadman watchdog zeroes the base whenever the 10 Hz command stream stops (control released,
+tab closed, Wi-Fi drop). Keep the tab foregrounded and the screen awake — browsers throttle
+hidden tabs below the watchdog rate, so backgrounding the page stops the robot by design.
+
+To watch your commands leave the mux while driving:
+
+```bash
+rostopic echo /robust/cmd_vel              # should mirror the joystick input
+```
+
+---
+
+## 7. Troubleshooting — teleop runs but the robot does not move (root-caused 2026-07-17)
+
+### Quick diagnosis chain
+
+```bash
+source /opt/ros/noetic/setup.bash
+rosnode ping -c1 /robot_driver             # "connection failed" => driver is DEAD
+timeout 5 rostopic echo -n1 /robot_state   # no message within 5 s => driver is dead
+rostopic info /robust/cmd_vel              # /robot_driver must be a live subscriber here
+grep -a robust-hardware-robot-bringup /var/log/syslog | tail -40   # driver stdout + crash text
+```
+
+A dead driver can still appear in `rosnode list` — the ROS master keeps stale registrations.
+`rosnode ping` is the truth test. The driver also appends a telemetry row every 10 s to
+`/var/log/ros/robot_log.csv`; rows stopping mid-session timestamp a crash.
+
+### Root cause found on this unit (2026-07-17)
+
+After the 11:52 boot, `robot_driver` started, reported "Robot is ready", then hit a
+**transient fault 16 s later** (the fault itself cleared). While saving the fault report it
+called `create_directories("/var/log/ros/logpro/error_log")` — but `/var/log/ros` is owned
+`ros:ros`, and on this unit the driver runs as user **`robustai`** (launched by the systemd
+*user* unit `robust-hardware-robot-bringup.service`, not the stock `robot.service`). The
+resulting `Permission denied` threw an uncaught `boost::filesystem` exception → SIGABRT
+(exit code -6), and the driver does not respawn. Symptom set: web page chips all "no data",
+`/robot_state`, `/battery_state`, `/odom` silent, mux streaming into a void, robot immobile —
+while everything else on the ROS graph looks alive.
+
+### Fix
+
+```bash
+# One-time: give the driver a writable fault-log dir so a fault can never kill it again
+sudo mkdir -p /var/log/ros/logpro
+sudo chown robustai:ros /var/log/ros/logpro
+sudo chmod 2775 /var/log/ros/logpro
+
+# Restart the driver layer (or simply reboot the robot)
+sudo -u robustai env XDG_RUNTIME_DIR=/run/user/1001 \
+    systemctl --user restart robust-hardware-robot-bringup.service
+```
+
+Verify: `rosnode ping /robot_driver` answers, `/robot_state` streams, the web chips populate.
+
+> ⚠️ **After applying, verify the directory is actually writable by the driver user:**
+>
+> ```bash
+> stat -c "%A %U:%G" /var/log/ros/logpro     # expect: drwxrwsr-x robustai:ros
+> ```
+>
+> **Status: fix fully applied and verified 2026-07-17** (`drwxrwsr-x robustai:ros`), driver
+> restarted, teleop confirmed working. Anything other than `robustai`-owned and group-writable
+> means the next driver fault will crash the driver again — re-run the check after any
+> reimage or `/var/log` cleanup.
+
+> **Do not** `sudo systemctl start robot.service`: the stock Fetch units (`robot.service`,
+> `roscore.service`) are *disabled* on this unit. Bringup belongs to the Robust.AI user units
+> (`systemctl --user` as `robustai`), and the stock unit would try to launch a second roscore.
+
+If the driver is alive but the wheels still don't respond, fall back to the bounded motion
+test in §3 to isolate web teleop from the drive path.
+
+---
+
 *Generated from live operation of the running system. See [README.md](README.md) for the full
 platform overview.*

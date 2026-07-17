@@ -244,7 +244,15 @@ python3 web_teleop.py          # then open http://<robot-ip>:8090
 
 Safety is enforced server-side: hard speed caps (0.3 m/s / 0.6 rad/s), a 400 ms deadman
 watchdog (release, tab close, or Wi-Fi drop → immediate zero), and live runstop/battery/odom
-status. The hardware runstop always overrides.
+status. The hardware runstop always overrides. Amber **"no data"** chips mean the base driver
+is publishing nothing — the robot cannot move in that state no matter what teleop sends.
+
+📄 **See [OPERATING_TESTS.md §6](OPERATING_TESTS.md#6-web-teleop--running--verifying-web_teleoppy)**
+for the full run & verify procedure (status chips, `/status` endpoint, drive checks), and
+**[§7](OPERATING_TESTS.md#7-troubleshooting--teleop-runs-but-the-robot-does-not-move-root-caused-2026-07-17)**
+for the "teleop runs but robot does not move" troubleshooting guide — including the base-driver
+crash root-caused and fixed on 2026-07-17 (`robot_driver` SIGABRT on unwritable
+`/var/log/ros/logpro`).
 
 ---
 

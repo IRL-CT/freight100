@@ -39,7 +39,7 @@ state = {
     "vx": 0.0, "wz": 0.0, "t_cmd": 0.0,      # latest browser command
     "runstopped": None, "ready": None, "faulted": None,
     "charge": None, "charging": None,
-    "ox": 0.0, "oy": 0.0,
+    "ox": None, "oy": None,
     "active": False,                           # watchdog verdict, for UI
 }
 lock = threading.Lock()
@@ -189,6 +189,8 @@ addEventListener('keydown', e => {
   keys[e.code] = true;
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { keys = {}; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { keys = {}; padEnd(); } });
 function keyVec() {
   let y = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0);
   let x = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
@@ -220,13 +222,18 @@ function chip(id, label, val, cls) {
 setInterval(async () => {
   try {
     const s = await (await fetch('/status')).json();
-    chip('c_run', 'runstop', s.runstopped ? 'ENGAGED' : 'released',
-         s.runstopped ? 'bad' : 'ok');
-    chip('c_ready', 'ready', s.ready ? 'yes' : 'no', s.ready ? 'ok' : 'bad');
+    chip('c_run', 'runstop',
+         s.runstopped == null ? 'no data' : (s.runstopped ? 'ENGAGED' : 'released'),
+         s.runstopped == null ? 'warn' : (s.runstopped ? 'bad' : 'ok'));
+    chip('c_ready', 'ready',
+         s.ready == null ? 'no data' : (s.ready ? 'yes' : 'no'),
+         s.ready == null ? 'warn' : (s.ready ? 'ok' : 'bad'));
     chip('c_batt', 'battery',
          s.charge == null ? '—' : Math.round(s.charge*100) + '%' + (s.charging ? ' ⚡' : ''),
          s.charge != null && s.charge < 0.15 ? 'warn' : '');
-    chip('c_odom', 'odom', s.ox.toFixed(2) + ', ' + s.oy.toFixed(2));
+    chip('c_odom', 'odom',
+         s.ox == null ? 'no data' : s.ox.toFixed(2) + ', ' + s.oy.toFixed(2),
+         s.ox == null ? 'warn' : '');
   } catch(e) {}
 }, 1000);
 </script></body></html>
