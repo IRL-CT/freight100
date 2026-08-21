@@ -1,0 +1,4 @@
+__pycache__/
+# regenerable snapshot output from camera_test/rs_view.py --snapshot
+camera_test/rs_color.png
+camera_test/rs_depth.png

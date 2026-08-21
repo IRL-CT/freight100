@@ -73,6 +73,13 @@ Runs under user `robustai` from `/home/robustai/LIFE` (launched via
 | **IMU** | Dual IMU (`imu1`, `imu2`) with gyro-offset/temperature; fused `/imu` |
 | **Wheel odometry** | `/odom`, EKF-fused `/odom_combined` (via `graft`) |
 
+> **Camera status 2026-08-21:** only a single D435i (serial `112322071745`) is currently on
+> USB, and it enumerates in **USB 2.0 fallback mode** (640x480 max); the `/left_cam/*` /
+> `/right_cam/*` topics above are stale registrations publishing nothing. See
+> [`camera_test/`](camera_test/) for the USB connection check and a standalone live viewer
+> ([`rs_view.py`](camera_test/rs_view.py): on-screen window, browser MJPEG on port 8091, or
+> snapshot).
+
 ---
 
 ## 4. How the Robot Is Driven (control pipeline)
