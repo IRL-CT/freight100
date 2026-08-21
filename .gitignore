@@ -2,3 +2,5 @@ __pycache__/
 # regenerable snapshot output from camera_test/rs_view.py --snapshot
 camera_test/rs_color.png
 camera_test/rs_depth.png
+# QR code contains the current stream token — never commit
+camera_test/stream_qr.png

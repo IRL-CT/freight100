@@ -54,6 +54,35 @@ Verified on this unit 2026-08-21: all three modes, sustained **30 fps** end-to-e
 MJPEG stream, clean shutdown. Only one process can hold the camera at a time — a second
 instance fails at startup with "Could not open the RealSense".
 
+## 4. Streaming Over the Internet
+
+[`stream_online.sh`](stream_online.sh) publishes the web viewer on a public HTTPS URL using
+a Cloudflare **quick tunnel** (no account, router, or port-forward needed — outbound-only
+from the robot):
+
+```bash
+cd ~/Desktop/freight100/camera_test
+./stream_online.sh            # prints  https://<random>.trycloudflare.com/?token=<random>
+./stream_online.sh 8          # same, MJPEG capped at 8 fps for slow connections
+```
+
+What it does: starts `rs_view.py --web` with a fresh random access token and
+`--stream-fps 12` (internet-friendly; the local capture stays 30 fps), tunnels port 8091
+via `cloudflared` (expected at `~/.local/bin/cloudflared`; override with `CLOUDFLARED=`),
+and prints the shareable URL. **Ctrl+C stops everything and kills the URL.**
+
+Security model, deliberately simple:
+- Every request must carry the printed `?token=...` — anything else gets **403**. The token
+  is random per run; treat the full URL like a password and share it only with people who
+  should see the camera.
+- Transport is HTTPS to Cloudflare's edge. The URL (and token) change on every run, and
+  quick tunnels are ephemeral with no uptime guarantee — fine for demos and checks, not for
+  a permanent feed. For something durable, use a named Cloudflare tunnel or Tailscale.
+- The stream shows the lab — remember there may be people in frame before sharing a URL.
+
+Verified 2026-08-21 through the public URL from the Cloudflare edge: 403 without token,
+0.3 s single-frame fetch, and a sustained ~10-12 fps MJPEG stream with the token.
+
 ---
 
 *See also [`../OPERATING_TESTS.md`](../OPERATING_TESTS.md) for driving the base.*

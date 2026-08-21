@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 import numpy as np
 import pyrealsense2 as rs
@@ -158,17 +159,19 @@ class Camera:
             pass
 
 
-PAGE = f"""<!doctype html><html><head><meta charset="utf-8">
+def page_html(token):
+    q = f"?token={token}" if token else ""
+    return f"""<!doctype html><html><head><meta charset="utf-8">
 <title>D435i live — freight1794</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{{margin:0;background:#111;color:#ddd;font:14px sans-serif;text-align:center}}
 img{{max-width:100%;height:auto}}</style></head>
 <body><p>RealSense D435i — color | depth &nbsp; (<a style="color:#8cf"
-href="/shot.jpg">single frame</a>)</p><img src="/stream.mjpg"></body></html>
+href="/shot.jpg{q}">single frame</a>)</p><img src="/stream.mjpg{q}"></body></html>
 """
 
 
-def make_handler(cam):
+def make_handler(cam, token=None, stream_fps=0):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):          # keep the terminal quiet
             pass
@@ -188,14 +191,22 @@ def make_handler(cam):
                 pass                     # client went away mid-response
 
         def _get(self):
-            if self.path in ("/", "/index.html"):
-                body = PAGE.encode()
+            url = urlsplit(self.path)
+            path = url.path
+            if token:
+                given = parse_qs(url.query).get("token", [""])[0]
+                if given != token:
+                    self.send_error(403, "missing or wrong token "
+                                         "(append ?token=... to the URL)")
+                    return
+            if path in ("/", "/index.html"):
+                body = page_html(token).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
-            elif self.path == "/shot.jpg":
+            elif path == "/shot.jpg":
                 frame = cam.next_frame()   # fresh frame, not the cached one
                 if frame is None:
                     self.send_error(503, "camera not streaming")
@@ -208,7 +219,7 @@ def make_handler(cam):
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-            elif self.path == "/stream.mjpg":
+            elif path == "/stream.mjpg":
                 frame = cam.next_frame()   # prefetch so a dead camera 503s
                 if frame is None:
                     self.send_error(503, "camera not streaming")
@@ -217,7 +228,13 @@ def make_handler(cam):
                 self.send_header("Content-Type",
                                  "multipart/x-mixed-replace; boundary=frame")
                 self.end_headers()
+                interval = 1.0 / stream_fps if stream_fps else 0
+                t_sent = 0.0
                 while frame is not None:
+                    if interval and time.time() - t_sent < interval:
+                        frame = cam.next_frame()   # drop frame, keep pace
+                        continue
+                    t_sent = time.time()
                     data = self._send_jpeg(frame)
                     if data is None:
                         break
@@ -250,10 +267,14 @@ def run_window(cam, duration):
     cv2.destroyAllWindows()
 
 
-def run_web(cam, duration):
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), make_handler(cam))
-    print(f"Serving on http://localhost:{PORT}  "
-          f"(from Wi-Fi: http://<robot-ip>:{PORT}, see `ip -4 addr show wlan0`)")
+def run_web(cam, duration, token=None, stream_fps=0):
+    server = ThreadingHTTPServer(("0.0.0.0", PORT),
+                                 make_handler(cam, token, stream_fps))
+    q = f"?token={token}" if token else ""
+    print(f"Serving on http://localhost:{PORT}/{q}  "
+          f"(from Wi-Fi: http://<robot-ip>:{PORT}/{q}, see `ip -4 addr show wlan0`)")
+    if token:
+        print("Access token required — URLs without ?token=... get 403.")
     print("Ctrl+C to stop.")
     if duration:
         timer = threading.Timer(duration, server.shutdown)
@@ -295,6 +316,12 @@ def main():
                       help="save one color/depth pair and exit")
     ap.add_argument("--duration", type=float, default=0,
                     help="auto-exit after N seconds (0 = run until quit)")
+    ap.add_argument("--token", default=None,
+                    help="web mode: require ?token=... on every request "
+                         "(use when exposing beyond the LAN)")
+    ap.add_argument("--stream-fps", type=float, default=0,
+                    help="web mode: cap MJPEG frame rate (0 = camera rate; "
+                         "10-12 recommended over the internet)")
     args = ap.parse_args()
 
     try:
@@ -312,7 +339,7 @@ def main():
         elif args.web or (not args.window and not os.environ.get("DISPLAY")):
             if not args.web:
                 print("No DISPLAY — falling back to web mode.")
-            run_web(cam, args.duration)
+            run_web(cam, args.duration, args.token, args.stream_fps)
             ok = True
         else:
             run_window(cam, args.duration)
